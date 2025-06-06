@@ -5,9 +5,10 @@
 #include <string.h>
 #include <time.h>
 #include <locale.h>
+#include <wchar.h>
 
 #define MAX_SIZE 20
-#define USE_SIMPLE_CHARS 1 // Mude para 0 para usar caracteres especiais
+#define USE_SIMPLE_CHARS 0 // 0 para usar caracteres UTF-8, 1 para ASCII
 
 // Configurações de velocidade
 typedef enum {
@@ -81,7 +82,7 @@ void draw_array(SortState *state, int start_y) {
     
     // Título
     attron(A_BOLD);
-    mvprintw(start_y - 2, 5, "Visualizacao do Array:");
+    mvprintw(start_y - 2, 5, "Visualização do Array:");
     attroff(A_BOLD);
     
     // Desenha as barras verticais
@@ -112,7 +113,7 @@ void draw_array(SortState *state, int start_y) {
             printw("[#]");
         }
         #else
-        // Versão com caracteres especiais
+        // Versão com caracteres especiais UTF-8
         for (int j = 0; j < height; j++) {
             move(start_y + 12 - j, x_pos);
             if (j == height - 1) {
@@ -147,7 +148,7 @@ void draw_array(SortState *state, int start_y) {
     // Linha separadora
     move(start_y + 15, 3);
     for (int i = 0; i < state->size * 5 + 2; i++) {
-        printw("-");
+        printw("─");
     }
     
     // Mostra status e estatísticas
@@ -157,7 +158,7 @@ void draw_array(SortState *state, int start_y) {
     attroff(COLOR_PAIR(6) | A_BOLD);
     
     move(start_y + 18, 5);
-    printw("Comparacoes: ");
+    printw("Comparações: ");
     attron(COLOR_PAIR(2));
     printw("%d", state->comparisons);
     attroff(COLOR_PAIR(2));
@@ -229,13 +230,22 @@ int wait_with_controls(SortState *state, int start_y) {
     return 0;
 }
 
-// Mostra informações detalhadas sobre algoritmo
-void show_detailed_algorithm_info(const char *name, const char *description, 
-                                const char *how_it_works, const char *complexity, 
-                                const char *advantages, const char *disadvantages,
-                                const char *use_cases, const char *variants) {
+// Função para contar quantas linhas um texto tem
+int count_lines(const char* str) {
+    int count = 1;
+    for (int i = 0; str[i]; i++) {
+        if (str[i] == '\n') count++;
+    }
+    return count;
+}
+
+// Função completa modificada
+void show_detailed_algorithm_info(const char* name, const char* description, 
+                                const char* how_it_works, const char* complexity,
+                                const char* advantages, const char* disadvantages,
+                                const char* use_cases, const char* variants) {
     clear();
-    int y = 0;
+    int y = 2;
     
     // Título
     attron(COLOR_PAIR(6) | A_BOLD);
@@ -245,53 +255,60 @@ void show_detailed_algorithm_info(const char *name, const char *description,
     
     // Descrição
     attron(COLOR_PAIR(3) | A_BOLD);
-    mvprintw(y++, 5, "DESCRIÇÃO:");
+    mvprintw(y++, 5, "DETALHAMENTO:");
     attroff(COLOR_PAIR(3) | A_BOLD);
-    mvprintw(y++, 5, "%s", description);
-    y++;
+    move(y, 5);
+    printw("%s", description);
+    y += count_lines(description) + 1;
     
     // Como funciona
     attron(COLOR_PAIR(3) | A_BOLD);
     mvprintw(y++, 5, "COMO FUNCIONA:");
     attroff(COLOR_PAIR(3) | A_BOLD);
-    mvprintw(y++, 5, "%s", how_it_works);
-    y++;
+    move(y, 5);
+    printw("%s", how_it_works);
+    y += count_lines(how_it_works) + 1;
     
     // Complexidade
     attron(COLOR_PAIR(3) | A_BOLD);
     mvprintw(y++, 5, "COMPLEXIDADE:");
     attroff(COLOR_PAIR(3) | A_BOLD);
-    mvprintw(y++, 5, "%s", complexity);
-    y++;
+    move(y, 5);
+    printw("%s", complexity);
+    y += count_lines(complexity) + 1;
     
     // Vantagens
     attron(COLOR_PAIR(2) | A_BOLD);
     mvprintw(y++, 5, "VANTAGENS:");
     attroff(COLOR_PAIR(2) | A_BOLD);
-    mvprintw(y++, 5, "%s", advantages);
-    y++;
+    move(y, 5);
+    printw("%s", advantages);
+    y += count_lines(advantages) + 1;
     
     // Desvantagens
     attron(COLOR_PAIR(2) | A_BOLD);
     mvprintw(y++, 5, "DESVANTAGENS:");
     attroff(COLOR_PAIR(2) | A_BOLD);
-    mvprintw(y++, 5, "%s", disadvantages);
-    y++;
+    move(y, 5);
+    printw("%s", disadvantages);
+    y += count_lines(disadvantages) + 1;
     
     // Casos de uso
     attron(COLOR_PAIR(5) | A_BOLD);
     mvprintw(y++, 5, "QUANDO USAR:");
     attroff(COLOR_PAIR(5) | A_BOLD);
-    mvprintw(y++, 5, "%s", use_cases);
-    y++;
+    move(y, 5);
+    printw("%s", use_cases);
+    y += count_lines(use_cases) + 1;
     
     // Variantes
     if (strlen(variants) > 0) {
         attron(COLOR_PAIR(7) | A_BOLD);
         mvprintw(y++, 5, "VARIANTES:");
         attroff(COLOR_PAIR(7) | A_BOLD);
-        mvprintw(y++, 5, "%s", variants);
-        y++;
+        move(y, 5);
+        printw("%s", variants);
+        y += count_lines(variants) + 1;
     }
     
     attron(COLOR_PAIR(6));
@@ -311,11 +328,11 @@ int bubble_sort(SortState *state, int start_y) {
         "BUBBLE SORT",
         "Um dos algoritmos mais simples, que compara elementos adjacentes\n     e os troca se estiverem fora de ordem.",
         "1. Percorre o array comparando pares adjacentes\n     2. Troca elementos se o primeiro for maior que o segundo\n     3. Repete até que nenhuma troca seja necessária\n     4. A cada passada, o maior elemento 'borbulha' para o final",
-        "• Melhor caso: O(n) - array já ordenado\n     • Caso médio: O(n²)\n     • Pior caso: O(n²) - array em ordem decrescente\n     • Espaço: O(1) - ordenação in-place",
-        "• Implementação muito simples\n     • Estável (mantém ordem relativa de elementos iguais)\n     • Detecta quando o array já está ordenado\n     • Funciona bem como ferramenta educacional",
-        "• Extremamente ineficiente para arrays grandes\n     • Faz muitas comparações desnecessárias\n     • Desempenho sempre quadrático (exceto melhor caso)",
-        "• Ensino de algoritmos básicos\n     • Arrays muito pequenos (< 10 elementos)\n     • Situações onde simplicidade é mais importante que eficiência",
-        "• Cocktail Sort (bidirecional)\n     • Odd-Even Sort (para computação paralela)"
+        "Melhor caso: O(n) - array já ordenado\n     Caso médio: O(n²)\n     Pior caso: O(n²) - array em ordem decrescente\n     Espaço: O(1) - ordenação in-place",
+        "Implementação muito simples\n     Estável (mantém ordem relativa de elementos iguais)\n     Detecta quando o array já está ordenado\n     Funciona bem como ferramenta educacional",
+        "Extremamente ineficiente para arrays grandes\n     Faz muitas comparações desnecessárias\n     Desempenho sempre quadrático (exceto melhor caso)",
+        "Ensino de algoritmos básicos\n     Arrays muito pequenos (< 10 elementos)\n     Situações onde simplicidade é mais importante que eficiência",
+        "Cocktail Sort (bidirecional)\n     Odd-Even Sort (para computação paralela)"
     );
     
     strcpy(state->status, "Iniciando Bubble Sort...");
@@ -381,11 +398,11 @@ int selection_sort(SortState *state, int start_y) {
         "SELECTION SORT",
         "Encontra o menor elemento do array e o coloca na primeira posição,\n     depois repete para o restante do array.",
         "1. Encontra o menor elemento do array inteiro\n     2. Troca com o primeiro elemento\n     3. Encontra o menor do restante (excluindo o primeiro)\n     4. Troca com o segundo elemento\n     5. Repete até ordenar todo o array",
-        "• Melhor caso: O(n²)\n     • Caso médio: O(n²)\n     • Pior caso: O(n²)\n     • Espaço: O(1) - ordenação in-place\n     • Sempre faz exatamente n-1 trocas",
-        "• Minimiza o número de trocas (apenas n-1)\n     • Desempenho consistente (sempre O(n²))\n     • Simples de implementar\n     • Funciona bem quando trocas são custosas",
-        "• Ineficiente para arrays grandes\n     • Não é estável\n     • Não se beneficia de dados parcialmente ordenados\n     • Sempre faz O(n²) comparações",
-        "• Arrays pequenos onde trocas são custosas\n     • Situações onde consistência de performance é importante\n     • Memória limitada (usa apenas O(1) espaço extra)",
-        "• Heap Sort (versão otimizada usando heap)\n     • Bidirectional Selection Sort"
+        "Melhor caso: O(n²)\n     Caso médio: O(n²)\n     Pior caso: O(n²)\n     Espaço: O(1) - ordenação in-place\n     Sempre faz exatamente n-1 trocas",
+        "Minimiza o número de trocas (apenas n-1)\n     Desempenho consistente (sempre O(n²))\n     Simples de implementar\n     Funciona bem quando trocas são custosas",
+        "Ineficiente para arrays grandes\n     Não é estável\n     Não se beneficia de dados parcialmente ordenados\n     Sempre faz O(n²) comparações",
+        "Arrays pequenos onde trocas são custosas\n     Situações onde consistência de performance é importante\n     Memória limitada (usa apenas O(1) espaço extra)",
+        "Heap Sort (versão otimizada usando heap)\n     Bidirectional Selection Sort"
     );
     
     strcpy(state->status, "Iniciando Selection Sort...");
@@ -458,11 +475,11 @@ int insertion_sort(SortState *state, int start_y) {
         "INSERTION SORT",
         "Constrói o array ordenado um elemento por vez, inserindo cada\n     novo elemento na posição correta entre os já ordenados.",
         "1. Considera o primeiro elemento como ordenado\n     2. Pega o próximo elemento (chave)\n     3. Compara com elementos à esquerda\n     4. Move elementos maiores para a direita\n     5. Insere a chave na posição correta\n     6. Repete até o final do array",
-        "• Melhor caso: O(n) - array já ordenado\n     • Caso médio: O(n²)\n     • Pior caso: O(n²) - array em ordem decrescente\n     • Espaço: O(1) - ordenação in-place",
-        "• Muito eficiente para arrays pequenos\n     • Excelente para dados quase ordenados\n     • Estável e adaptativo\n     • Ordenação online (pode ordenar conforme recebe dados)\n     • Simples de implementar",
-        "• Ineficiente para arrays grandes\n     • O(n²) comparações no pior caso\n     • Muitas movimentações de elementos",
-        "• Arrays pequenos (< 50 elementos)\n     • Dados quase ordenados ou parcialmente ordenados\n     • Como sub-rotina em algoritmos híbridos (ex: Timsort)\n     • Ordenação incremental de dados que chegam aos poucos",
-        "• Binary Insertion Sort (usa busca binária)\n     • Shell Sort (versão com gaps)\n     • Library Sort"
+        "Melhor caso: O(n) - array já ordenado\n     Caso médio: O(n²)\n     Pior caso: O(n²) - array em ordem decrescente\n     Espaço: O(1) - ordenação in-place",
+        "Muito eficiente para arrays pequenos\n     Excelente para dados quase ordenados\n     Estável e adaptativo\n     Ordenação online (pode ordenar conforme recebe dados)\n     Simples de implementar",
+        "Ineficiente para arrays grandes\n     O(n²) comparações no pior caso\n     Muitas movimentações de elementos",
+        "Arrays pequenos (< 50 elementos)\n     Dados quase ordenados ou parcialmente ordenados\n     Como sub-rotina em algoritmos híbridos (ex: Timsort)\n     Ordenação incremental de dados que chegam aos poucos",
+        "Binary Insertion Sort (usa busca binária)\n     Shell Sort (versão com gaps)\n     Library Sort"
     );
     
     strcpy(state->status, "Iniciando Insertion Sort...");
@@ -604,11 +621,11 @@ int quicksort(SortState *state, int start_y) {
         "QUICK SORT",
         "Algoritmo de divisão e conquista que escolhe um pivot e particiona\n     o array: menores à esquerda, maiores à direita.",
         "1. Escolhe um elemento como pivot (geralmente o último)\n     2. Reorganiza o array: menores que pivot à esquerda, maiores à direita\n     3. Coloca o pivot na posição final correta\n     4. Aplica recursivamente nas duas partições\n     5. Combina os resultados (já estão ordenados)",
-        "• Melhor caso: O(n log n) - pivot sempre divide o array ao meio\n     • Caso médio: O(n log n)\n     • Pior caso: O(n²) - pivot sempre é o menor ou maior\n     • Espaço: O(log n) - devido à recursão",
-        "• Muito rápido na prática (um dos mais usados)\n     • Ordenação in-place\n     • Divide e conquista é elegante\n     • Boa localidade de cache",
-        "• Pior caso é O(n²)\n     • Não é estável\n     • Desempenho depende muito da escolha do pivot\n     • Pode causar stack overflow (muita recursão)",
-        "• Arrays grandes (> 1000 elementos)\n     • Quando espaço extra é limitado\n     • Dados com distribuição aleatória\n     • Implementações de bibliotecas padrão",
-        "• 3-way QuickSort (lida melhor com elementos duplicados)\n     • Randomized QuickSort (escolha aleatória do pivot)\n     • Dual-Pivot QuickSort (usado no Java)"
+        "Melhor caso: O(n log n) - pivot sempre divide o array ao meio\n     Caso médio: O(n log n)\n     Pior caso: O(n²) - pivot sempre é o menor ou maior\n     Espaço: O(log n) - devido à recursão",
+        "Muito rápido na prática (um dos mais usados)\n     Ordenação in-place\n     Divide e conquista é elegante\n     Boa localidade de cache",
+        "Pior caso é O(n²)\n     Não é estável\n     Desempenho depende muito da escolha do pivot\n     Pode causar stack overflow (muita recursão)",
+        "Arrays grandes (> 1000 elementos)\n     Quando espaço extra é limitado\n     Dados com distribuição aleatória\n     Implementações de bibliotecas padrão",
+        "3-way QuickSort (lida melhor com elementos duplicados)\n     Randomized QuickSort (escolha aleatória do pivot)\n     Dual-Pivot QuickSort (usado no Java)"
     );
     
     strcpy(state->status, "Iniciando QuickSort...");
@@ -644,10 +661,10 @@ void speed_menu(SortState *state) {
     }
     
     mvprintw(12, 5, "Durante a visualização você também pode usar:");
-    mvprintw(13, 5, "• < ou , : Diminuir velocidade");
-    mvprintw(14, 5, "• > ou . : Aumentar velocidade");
-    mvprintw(15, 5, "• SPACE  : Pausar/Continuar");
-    mvprintw(16, 5, "• ESC    : Voltar ao menu");
+    mvprintw(13, 5, " < ou , : Diminuir velocidade");
+    mvprintw(14, 5, " > ou . : Aumentar velocidade");
+    mvprintw(15, 5, " SPACE  : Pausar/Continuar");
+    mvprintw(16, 5, " ESC    : Voltar ao menu");
     
     attron(COLOR_PAIR(2));
     mvprintw(18, 5, "Pressione 1-5 para escolher ou ESC para voltar...");
@@ -688,24 +705,25 @@ int algorithm_study_menu() {
 // Mostra comparação detalhada entre algoritmos
 void show_algorithms_comparison() {
     clear();
-    attron(COLOR_PAIR(6));
+    
+    attron(COLOR_PAIR(6) | A_BOLD);
     mvprintw(0, 15, "=== COMPARAÇÃO ENTRE ALGORITMOS DE ORDENAÇÃO ===");
-    attroff(COLOR_PAIR(6));
+    attroff(COLOR_PAIR(6) | A_BOLD);
     
     int y = 2;
     
-    // Tabela de complexidades
+    // Tabela de complexidades com UTF-8
     attron(COLOR_PAIR(3) | A_BOLD);
     mvprintw(y++, 2, "COMPLEXIDADE DE TEMPO:");
     attroff(COLOR_PAIR(3) | A_BOLD);
-    mvprintw(y++, 2, "┌────────────────┬────────────┬────────────┬────────────┐");
-    mvprintw(y++, 2, "│ Algoritmo      │ Melhor     │ Médio      │ Pior       │");
-    mvprintw(y++, 2, "├────────────────┼────────────┼────────────┼────────────┤");
-    mvprintw(y++, 2, "│ Bubble Sort    │ O(n)       │ O(n²)      │ O(n²)      │");
-    mvprintw(y++, 2, "│ Selection Sort │ O(n²)      │ O(n²)      │ O(n²)      │");
-    mvprintw(y++, 2, "│ Insertion Sort │ O(n)       │ O(n²)      │ O(n²)      │");
-    mvprintw(y++, 2, "│ Quick Sort     │ O(n log n) │ O(n log n) │ O(n²)      │");
-    mvprintw(y++, 2, "└────────────────┴────────────┴────────────┴────────────┘");
+    mvprintw(y++, 2, "┌────────────────┬───────────┬───────────┬──────────┐");
+    mvprintw(y++, 2, "│ Algoritmo      │ Melhor    │ Médio     │ Pior     │");
+    mvprintw(y++, 2, "├────────────────┼───────────┼───────────┼──────────┤");
+    mvprintw(y++, 2, "│ Bubble Sort    │ O(n)      │ O(n²)     │ O(n²)    │");
+    mvprintw(y++, 2, "│ Selection Sort │ O(n²)     │ O(n²)     │ O(n²)    │");
+    mvprintw(y++, 2, "│ Insertion Sort │ O(n)      │ O(n²)     │ O(n²)    │");
+    mvprintw(y++, 2, "│ Quick Sort     │ O(n log n)│ O(n log n)│ O(n²)    │");
+    mvprintw(y++, 2, "└────────────────┴───────────┴───────────┴──────────┘");
     y++;
     
     // Características
@@ -714,41 +732,43 @@ void show_algorithms_comparison() {
     attroff(COLOR_PAIR(5) | A_BOLD);
     
     attron(COLOR_PAIR(2));
-    mvprintw(y++, 2, "BUBBLE SORT:");
+    mvprintw(y++, 2, "• BUBBLE SORT:");
     attroff(COLOR_PAIR(2));
-    mvprintw(y++, 2, "• Mais fácil de entender • Detecta array ordenado • Muito lento");
+    mvprintw(y++, 2, "  → Mais fácil de entender  → Detecta array ordenado  → Muito lento");
     y++;
     
     attron(COLOR_PAIR(2));
-    mvprintw(y++, 2, "SELECTION SORT:");
+    mvprintw(y++, 2, "• SELECTION SORT:");
     attroff(COLOR_PAIR(2));
-    mvprintw(y++, 2, "• Poucas trocas (n-1) • Performance consistente • Não é estável");
+    mvprintw(y++, 2, "  → Poucas trocas (n-1)  → Performance consistente  → Não é estável");
     y++;
     
     attron(COLOR_PAIR(2));
-    mvprintw(y++, 2, "INSERTION SORT:");
+    mvprintw(y++, 2, "• INSERTION SORT:");
     attroff(COLOR_PAIR(2));
-    mvprintw(y++, 2, "• Excelente para dados quase ordenados • Estável • Ordenação online");
+    mvprintw(y++, 2, "  → Excelente para dados quase ordenados  → Estável  → Ordenação online");
     y++;
     
     attron(COLOR_PAIR(2));
-    mvprintw(y++, 2, "QUICK SORT:");
+    mvprintw(y++, 2, "• QUICK SORT:");
     attroff(COLOR_PAIR(2));
-    mvprintw(y++, 2, "• Mais rápido na prática • In-place • Pode ser O(n²) no pior caso");
+    mvprintw(y++, 2, "  → Mais rápido na prática  → In-place  → Pode ser O(n²) no pior caso");
     y++;
     
     // Recomendações
     attron(COLOR_PAIR(7) | A_BOLD);
     mvprintw(y++, 2, "QUANDO USAR CADA UM:");
     attroff(COLOR_PAIR(7) | A_BOLD);
-    mvprintw(y++, 2, "• Arrays pequenos (< 10): Insertion Sort");
-    mvprintw(y++, 2, "• Arrays médios (10-50): Insertion Sort ou Quick Sort");
-    mvprintw(y++, 2, "• Arrays grandes (> 50): Quick Sort");
-    mvprintw(y++, 2, "• Dados quase ordenados: Insertion Sort");
-    mvprintw(y++, 2, "• Minimizar trocas: Selection Sort");
-    mvprintw(y++, 2, "• Aprendizado: Bubble Sort");
+    mvprintw(y++, 2, "✓ Arrays pequenos (< 10): Insertion Sort");
+    mvprintw(y++, 2, "✓ Arrays médios (10-50): Insertion Sort ou Quick Sort");
+    mvprintw(y++, 2, "✓ Arrays grandes (> 50): Quick Sort");
+    mvprintw(y++, 2, "✓ Dados quase ordenados: Insertion Sort");
+    mvprintw(y++, 2, "✓ Minimizar trocas: Selection Sort");
+    mvprintw(y++, 2, "✓ Aprendizado: Bubble Sort");
     
+    attron(COLOR_PAIR(6));
     mvprintw(y + 2, 2, "Pressione qualquer tecla para voltar...");
+    attroff(COLOR_PAIR(6));
     refresh();
     getch();
 }
@@ -756,9 +776,9 @@ void show_algorithms_comparison() {
 // Menu principal
 int show_menu(SortState *state) {
     clear();
-    attron(COLOR_PAIR(6));
+    attron(COLOR_PAIR(6) | A_BOLD);
     mvprintw(2, 10, "=== VISUALIZADOR DE ALGORITMOS DE ORDENAÇÃO ===");
-    attroff(COLOR_PAIR(6));
+    attroff(COLOR_PAIR(6) | A_BOLD);
     
     mvprintw(4, 5, "Uma ferramenta educacional para aprender algoritmos de ordenação");
     
@@ -777,15 +797,15 @@ int show_menu(SortState *state) {
     mvprintw(18, 5, "Legenda: ");
     
     attron(COLOR_PAIR(2));
-    printw("[#] Comparando  ");
+    printw("[█] Comparando  ");
     attroff(COLOR_PAIR(2));
     
     attron(COLOR_PAIR(3));
-    printw("[#] Trocando  ");
+    printw("[█] Trocando  ");
     attroff(COLOR_PAIR(3));
     
     attron(COLOR_PAIR(5));
-    printw("[#] Ordenado");
+    printw("[█] Ordenado");
     attroff(COLOR_PAIR(5));
     
     mvprintw(20, 5, "Velocidade atual: %s", speed_names[state->speed]);
@@ -850,7 +870,9 @@ void input_manual_array(SortState *state) {
 }
 
 int main() {
-    setlocale(LC_ALL, "Portuguese");
+    // MUDANÇA PRINCIPAL: setlocale correto para UTF-8
+    setlocale(LC_ALL, "");
+    
     // Inicializa ncurses
     initscr();
     cbreak();
