@@ -6,11 +6,13 @@
 #include <time.h>
 #include <locale.h>
 #include <wchar.h>
+#include <stdarg.h>
 
 #define MAX_SIZE 20
 #define USE_SIMPLE_CHARS 0 // 0 para usar caracteres UTF-8, 1 para ASCII
+#define MAX_LOG_ENTRIES 1000
+#define MAX_LOG_LENGTH 200
 
-// Configurações de velocidade
 typedef enum {
     SPEED_VERY_SLOW = 0,
     SPEED_SLOW = 1,
@@ -19,7 +21,7 @@ typedef enum {
     SPEED_VERY_FAST = 4
 } SpeedLevel;
 
-int speed_delays[] = {800000, 500000, 300000, 150000, 50000}; // microsegundos
+int speed_delays[] = {800000, 500000, 300000, 150000, 50000}; 
 char* speed_names[] = {"Muito Lento", "Lento", "Normal", "Rápido", "Muito Rápido"};
 
 typedef struct {
@@ -28,13 +30,18 @@ typedef struct {
     int comparing[2];
     int swapping[2];
     int sorted_until;
+    int sorted_positions[MAX_SIZE];
     char status[100];
     int comparisons;
     int swaps;
     SpeedLevel speed;
+    char log[MAX_LOG_ENTRIES][MAX_LOG_LENGTH];
+    int log_count;
+    int log_enabled;
 } SortState;
 
-// Cores para visualização
+void show_speed_controls(SortState *state, int y);
+
 void init_colors() {
     start_color();
     init_pair(1, COLOR_WHITE, COLOR_BLACK);   // Normal
@@ -46,7 +53,6 @@ void init_colors() {
     init_pair(7, COLOR_BLUE, COLOR_BLACK);    // Informativo
 }
 
-// Limpa estado de comparação/troca
 void reset_highlights(SortState *state) {
     state->comparing[0] = -1;
     state->comparing[1] = -1;
@@ -54,66 +60,180 @@ void reset_highlights(SortState *state) {
     state->swapping[1] = -1;
 }
 
-// Função para obter delay atual
+void init_sorted_positions(SortState *state) {
+    for (int i = 0; i < MAX_SIZE; i++) {
+        state->sorted_positions[i] = 0;
+    }
+}
+
+void init_log(SortState *state) {
+    state->log_count = 0;
+    state->log_enabled = 1;
+}
+
+void add_log_entry(SortState *state, const char* message) {
+    if (!state->log_enabled || state->log_count >= MAX_LOG_ENTRIES) return;
+    
+    strncpy(state->log[state->log_count], message, MAX_LOG_LENGTH - 1);
+    state->log[state->log_count][MAX_LOG_LENGTH - 1] = '\0';
+    state->log_count++;
+}
+
+void set_status(SortState *state, const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    vsnprintf(state->status, sizeof(state->status), format, args);
+    va_end(args);
+    
+    if (state->log_enabled) {
+        add_log_entry(state, state->status);
+    }
+}
+
+void update_sorted_positions(SortState *state) {
+    int sorted_arr[MAX_SIZE];
+    for (int i = 0; i < state->size; i++) {
+        sorted_arr[i] = state->arr[i];
+    }
+    
+    for (int i = 0; i < state->size - 1; i++) {
+        for (int j = 0; j < state->size - i - 1; j++) {
+            if (sorted_arr[j] > sorted_arr[j + 1]) {
+                int temp = sorted_arr[j];
+                sorted_arr[j] = sorted_arr[j + 1];
+                sorted_arr[j + 1] = temp;
+            }
+        }
+    }
+    
+    for (int i = 0; i < state->size; i++) {
+        if (state->arr[i] == sorted_arr[i]) {
+            state->sorted_positions[i] = 1;
+        } else {
+            state->sorted_positions[i] = 0;
+        }
+    }
+}
+
 int get_current_delay(SortState *state) {
     return speed_delays[state->speed];
 }
 
-// Mostra controles de velocidade
 void show_speed_controls(SortState *state, int y) {
     attron(COLOR_PAIR(7));
-    mvprintw(y, 5, "Velocidade: [<] %s [>] | ESC: Menu | SPACE: Pausar/Continuar", 
-             speed_names[state->speed]);
+    mvprintw(y, 5, "Velocidade: [<] %s [>] | ESC: Menu | SPACE: Pausar | L: %s Log", 
+             speed_names[state->speed], state->log_enabled ? "Desabilitar" : "Habilitar");
     attroff(COLOR_PAIR(7));
 }
 
-// Desenha o array na tela
+void show_log(SortState *state) {
+    clear();
+    
+    attron(COLOR_PAIR(6) | A_BOLD);
+    mvprintw(0, 5, "=== LOG DE EXECUÇÃO DO ALGORITMO ===");
+    attroff(COLOR_PAIR(6) | A_BOLD);
+    
+    if (state->log_count == 0) {
+        mvprintw(2, 5, "Nenhuma entrada no log.");
+        mvprintw(4, 5, "Execute um algoritmo com o log habilitado para ver o histórico.");
+    } else {
+        mvprintw(1, 5, "Total de %d operações registradas:", state->log_count);
+        
+        int start_line = 0;
+        int max_lines = LINES - 5; 
+        int current_page = 0;
+        int total_pages = (state->log_count + max_lines - 1) / max_lines;
+        
+        while (1) {
+            for (int i = 3; i < LINES - 2; i++) {
+                move(i, 0);
+                clrtoeol();
+            }
+            
+            for (int i = 0; i < max_lines && (start_line + i) < state->log_count; i++) {
+                mvprintw(3 + i, 2, "%3d. %s", start_line + i + 1, state->log[start_line + i]);
+            }
+            
+            attron(COLOR_PAIR(7));
+            mvprintw(LINES - 2, 5, "Página %d/%d | ↑↓: Navegar | ESC: Voltar | C: Limpar log", 
+                     current_page + 1, total_pages);
+            attroff(COLOR_PAIR(7));
+            
+            refresh();
+            
+            int key = getch();
+            switch (key) {
+                case 27: // ESC
+                    return;
+                case 'c':
+                case 'C':
+                    state->log_count = 0;
+                    mvprintw(LINES - 1, 5, "Log limpo!");
+                    refresh();
+                    sleep(1);
+                    return;
+                case KEY_UP:
+                    if (current_page > 0) {
+                        current_page--;
+                        start_line = current_page * max_lines;
+                    }
+                    break;
+                case KEY_DOWN:
+                    if (current_page < total_pages - 1) {
+                        current_page++;
+                        start_line = current_page * max_lines;
+                    }
+                    break;
+            }
+        }
+    }
+    
+    attron(COLOR_PAIR(6));
+    mvprintw(LINES - 1, 5, "Pressione qualquer tecla para voltar...");
+    attroff(COLOR_PAIR(6));
+    refresh();
+    getch();
+}
+
 void draw_array(SortState *state, int start_y) {
     int max_val = 0;
     for (int i = 0; i < state->size; i++) {
         if (state->arr[i] > max_val) max_val = state->arr[i];
     }
+    update_sorted_positions(state);
     
-    // Limpa área de visualização
     for (int i = 0; i < 20; i++) {
         move(start_y + i, 0);
         clrtoeol();
     }
     
-    // Título
     attron(A_BOLD);
     mvprintw(start_y - 2, 5, "Visualização do Array:");
     attroff(A_BOLD);
     
-    // Desenha as barras verticais
     for (int i = 0; i < state->size; i++) {
         int height = (state->arr[i] * 12) / max_val;
         if (height == 0) height = 1;
         
-        // Define cor da barra
-        int color = 1;
-        if (state->comparing[0] == i || state->comparing[1] == i) {
-            color = 2;
-        } else if (state->swapping[0] == i || state->swapping[1] == i) {
-            color = 3;
-        } else if (i < state->sorted_until) {
-            color = 5;
-        }
+        int color = 1; 
         
-        // Calcula posição X para melhor espaçamento
+        if (state->comparing[0] == i || state->comparing[1] == i) {
+            color = 2; 
+        } else if (state->swapping[0] == i || state->swapping[1] == i) {
+            color = 3; 
+        } else if (state->sorted_positions[i]) {
+            color = 5; 
+        }
         int x_pos = 5 + (i * 5);
         
-        // Desenha a barra vertical
         attron(COLOR_PAIR(color));
         
         #if USE_SIMPLE_CHARS
-        // Versão com caracteres simples
         for (int j = 0; j < height; j++) {
             move(start_y + 12 - j, x_pos);
             printw("[#]");
         }
         #else
-        // Versão com caracteres especiais UTF-8
         for (int j = 0; j < height; j++) {
             move(start_y + 12 - j, x_pos);
             if (j == height - 1) {
@@ -128,30 +248,28 @@ void draw_array(SortState *state, int start_y) {
         
         attroff(COLOR_PAIR(color));
         
-        // Mostra o valor abaixo da barra
         move(start_y + 13, x_pos);
         if (state->comparing[0] == i || state->comparing[1] == i) {
             attron(COLOR_PAIR(2) | A_BOLD);
         } else if (state->swapping[0] == i || state->swapping[1] == i) {
             attron(COLOR_PAIR(3) | A_BOLD);
+        } else if (state->sorted_positions[i]) {
+            attron(COLOR_PAIR(5) | A_BOLD);
         }
         printw("%3d", state->arr[i]);
-        attroff(COLOR_PAIR(2) | COLOR_PAIR(3) | A_BOLD);
+        attroff(COLOR_PAIR(2) | COLOR_PAIR(3) | COLOR_PAIR(5) | A_BOLD);
         
-        // Mostra o índice
         move(start_y + 14, x_pos + 1);
         attron(A_DIM);
         printw("%d", i);
         attroff(A_DIM);
     }
     
-    // Linha separadora
     move(start_y + 15, 3);
     for (int i = 0; i < state->size * 5 + 2; i++) {
         printw("─");
     }
     
-    // Mostra status e estatísticas
     attron(COLOR_PAIR(6) | A_BOLD);
     move(start_y + 17, 5);
     printw("> Status: %s", state->status);
@@ -166,31 +284,37 @@ void draw_array(SortState *state, int start_y) {
     attron(COLOR_PAIR(3));
     printw("%d", state->swaps);
     attroff(COLOR_PAIR(3));
+
+    int sorted_count = 0;
+    for (int i = 0; i < state->size; i++) {
+        if (state->sorted_positions[i]) sorted_count++;
+    }
+    printw(" | ");
+    attron(COLOR_PAIR(5));
+    printw("Ordenados: %d/%d", sorted_count, state->size);
+    attroff(COLOR_PAIR(5));
     
-    // Mostra controles de velocidade
     show_speed_controls(state, start_y + 19);
     
     refresh();
 }
 
-// Função para aguardar com possibilidade de controle
 int wait_with_controls(SortState *state, int start_y) {
     int delay = get_current_delay(state);
-    int steps = delay / 10000; // Divide em pequenos passos para responsividade
+    int steps = delay / 10000; 
     
     for (int i = 0; i < steps; i++) {
         usleep(10000);
         
-        // Verifica se há tecla pressionada (não bloqueante)
         nodelay(stdscr, TRUE);
         int ch = getch();
         nodelay(stdscr, FALSE);
         
         if (ch != ERR) {
             switch (ch) {
-                case 27: // ESC
-                    return -1; // Sinal para voltar ao menu
-                case ' ': // SPACE - pausa
+                case 27: 
+                    return -1; 
+                case ' ': 
                     attron(COLOR_PAIR(6));
                     mvprintw(0, 5, "PAUSADO - Pressione SPACE para continuar ou ESC para menu");
                     attroff(COLOR_PAIR(6));
@@ -224,13 +348,18 @@ int wait_with_controls(SortState *state, int start_y) {
                         refresh();
                     }
                     break;
+                case 'l':
+                case 'L':
+                    state->log_enabled = !state->log_enabled;
+                    show_speed_controls(state, start_y + 19);
+                    refresh();
+                    break;
             }
         }
     }
     return 0;
 }
 
-// Função para contar quantas linhas um texto tem
 int count_lines(const char* str) {
     int count = 1;
     for (int i = 0; str[i]; i++) {
@@ -239,7 +368,6 @@ int count_lines(const char* str) {
     return count;
 }
 
-// Função completa modificada
 void show_detailed_algorithm_info(const char* name, const char* description, 
                                 const char* how_it_works, const char* complexity,
                                 const char* advantages, const char* disadvantages,
@@ -247,13 +375,11 @@ void show_detailed_algorithm_info(const char* name, const char* description,
     clear();
     int y = 2;
     
-    // Título
     attron(COLOR_PAIR(6) | A_BOLD);
     mvprintw(y++, 5, "=== %s - GUIA COMPLETO ===", name);
     attroff(COLOR_PAIR(6) | A_BOLD);
     y++;
     
-    // Descrição
     attron(COLOR_PAIR(3) | A_BOLD);
     mvprintw(y++, 5, "DETALHAMENTO:");
     attroff(COLOR_PAIR(3) | A_BOLD);
@@ -261,7 +387,6 @@ void show_detailed_algorithm_info(const char* name, const char* description,
     printw("%s", description);
     y += count_lines(description) + 1;
     
-    // Como funciona
     attron(COLOR_PAIR(3) | A_BOLD);
     mvprintw(y++, 5, "COMO FUNCIONA:");
     attroff(COLOR_PAIR(3) | A_BOLD);
@@ -269,7 +394,6 @@ void show_detailed_algorithm_info(const char* name, const char* description,
     printw("%s", how_it_works);
     y += count_lines(how_it_works) + 1;
     
-    // Complexidade
     attron(COLOR_PAIR(3) | A_BOLD);
     mvprintw(y++, 5, "COMPLEXIDADE:");
     attroff(COLOR_PAIR(3) | A_BOLD);
@@ -277,15 +401,13 @@ void show_detailed_algorithm_info(const char* name, const char* description,
     printw("%s", complexity);
     y += count_lines(complexity) + 1;
     
-    // Vantagens
     attron(COLOR_PAIR(2) | A_BOLD);
     mvprintw(y++, 5, "VANTAGENS:");
     attroff(COLOR_PAIR(2) | A_BOLD);
     move(y, 5);
     printw("%s", advantages);
     y += count_lines(advantages) + 1;
-    
-    // Desvantagens
+       
     attron(COLOR_PAIR(2) | A_BOLD);
     mvprintw(y++, 5, "DESVANTAGENS:");
     attroff(COLOR_PAIR(2) | A_BOLD);
@@ -293,7 +415,6 @@ void show_detailed_algorithm_info(const char* name, const char* description,
     printw("%s", disadvantages);
     y += count_lines(disadvantages) + 1;
     
-    // Casos de uso
     attron(COLOR_PAIR(5) | A_BOLD);
     mvprintw(y++, 5, "QUANDO USAR:");
     attroff(COLOR_PAIR(5) | A_BOLD);
@@ -301,7 +422,6 @@ void show_detailed_algorithm_info(const char* name, const char* description,
     printw("%s", use_cases);
     y += count_lines(use_cases) + 1;
     
-    // Variantes
     if (strlen(variants) > 0) {
         attron(COLOR_PAIR(7) | A_BOLD);
         mvprintw(y++, 5, "VARIANTES:");
@@ -322,7 +442,6 @@ void show_detailed_algorithm_info(const char* name, const char* description,
     return;
 }
 
-// Bubble Sort
 int bubble_sort(SortState *state, int start_y) {
     show_detailed_algorithm_info(
         "BUBBLE SORT",
@@ -336,8 +455,10 @@ int bubble_sort(SortState *state, int start_y) {
     );
     
     strcpy(state->status, "Iniciando Bubble Sort...");
+    add_log_entry(state, "=== INÍCIO DO BUBBLE SORT ===");
     state->comparisons = 0;
     state->swaps = 0;
+    init_sorted_positions(state);
     draw_array(state, start_y);
     if (wait_with_controls(state, start_y) == -1) return -1;
     
@@ -349,7 +470,7 @@ int bubble_sort(SortState *state, int start_y) {
             state->comparing[1] = j + 1;
             state->comparisons++;
             
-            sprintf(state->status, "Passada %d: Comparando posições %d e %d (valores: %d e %d)", 
+            set_status(state, "Passada %d: Comparando posições %d e %d (valores: %d e %d)", 
                     i + 1, j, j + 1, state->arr[j], state->arr[j + 1]);
             draw_array(state, start_y);
             if (wait_with_controls(state, start_y) == -1) return -1;
@@ -365,7 +486,7 @@ int bubble_sort(SortState *state, int start_y) {
                 state->swaps++;
                 swapped = 1;
                 
-                sprintf(state->status, "Trocando %d com %d", state->arr[j + 1], state->arr[j]);
+                set_status(state, "Trocando %d com %d", state->arr[j + 1], state->arr[j]);
                 draw_array(state, start_y);
                 if (wait_with_controls(state, start_y) == -1) return -1;
             }
@@ -373,12 +494,12 @@ int bubble_sort(SortState *state, int start_y) {
         
         reset_highlights(state);
         state->sorted_until = state->size - i - 1;
-        sprintf(state->status, "Fim da passada %d. Maior elemento na posição correta.", i + 1);
+        set_status(state, "Fim da passada %d. Maior elemento na posição correta.", i + 1);
         draw_array(state, start_y);
         if (wait_with_controls(state, start_y) == -1) return -1;
         
         if (!swapped) {
-            sprintf(state->status, "Nenhuma troca realizada. Array já está ordenado!");
+            set_status(state, "Nenhuma troca realizada. Array já está ordenado!");
             draw_array(state, start_y);
             if (wait_with_controls(state, start_y) == -1) return -1;
             break;
@@ -388,11 +509,11 @@ int bubble_sort(SortState *state, int start_y) {
     reset_highlights(state);
     state->sorted_until = 0;
     strcpy(state->status, "Bubble Sort concluído!");
+    add_log_entry(state, "=== BUBBLE SORT CONCLUÍDO ===");
     draw_array(state, start_y);
     return 0;
 }
 
-// Selection Sort
 int selection_sort(SortState *state, int start_y) {
     show_detailed_algorithm_info(
         "SELECTION SORT",
@@ -406,8 +527,10 @@ int selection_sort(SortState *state, int start_y) {
     );
     
     strcpy(state->status, "Iniciando Selection Sort...");
+    add_log_entry(state, "=== INÍCIO DO SELECTION SORT ===");
     state->comparisons = 0;
     state->swaps = 0;
+    init_sorted_positions(state);
     draw_array(state, start_y);
     if (wait_with_controls(state, start_y) == -1) return -1;
     
@@ -416,7 +539,7 @@ int selection_sort(SortState *state, int start_y) {
         reset_highlights(state);
         state->comparing[0] = i;
         
-        sprintf(state->status, "Procurando o menor elemento a partir da posição %d", i);
+        set_status(state, "Procurando o menor elemento a partir da posição %d", i);
         draw_array(state, start_y);
         if (wait_with_controls(state, start_y) == -1) return -1;
         
@@ -426,14 +549,14 @@ int selection_sort(SortState *state, int start_y) {
             state->comparing[1] = j;
             state->comparisons++;
             
-            sprintf(state->status, "Comparando posição %d (valor: %d) com posição %d (valor: %d)", 
+            set_status(state, "Comparando posição %d (valor: %d) com posição %d (valor: %d)", 
                     min_idx, state->arr[min_idx], j, state->arr[j]);
             draw_array(state, start_y);
             if (wait_with_controls(state, start_y) == -1) return -1;
             
             if (state->arr[j] < state->arr[min_idx]) {
                 min_idx = j;
-                sprintf(state->status, "Novo menor encontrado: %d na posição %d", state->arr[j], j);
+                set_status(state, "Novo menor encontrado: %d na posição %d", state->arr[j], j);
                 draw_array(state, start_y);
                 if (wait_with_controls(state, start_y) == -1) return -1;
             }
@@ -449,7 +572,7 @@ int selection_sort(SortState *state, int start_y) {
             state->arr[min_idx] = temp;
             state->swaps++;
             
-            sprintf(state->status, "Trocando posição %d (valor: %d) com posição %d (valor: %d)", 
+            set_status(state, "Trocando posição %d (valor: %d) com posição %d (valor: %d)", 
                     i, state->arr[min_idx], min_idx, state->arr[i]);
             draw_array(state, start_y);
             if (wait_with_controls(state, start_y) == -1) return -1;
@@ -457,7 +580,7 @@ int selection_sort(SortState *state, int start_y) {
         
         reset_highlights(state);
         state->sorted_until = i + 1;
-        sprintf(state->status, "Posição %d ordenada com valor %d", i, state->arr[i]);
+        set_status(state, "Posição %d ordenada com valor %d", i, state->arr[i]);
         draw_array(state, start_y);
         if (wait_with_controls(state, start_y) == -1) return -1;
     }
@@ -465,11 +588,11 @@ int selection_sort(SortState *state, int start_y) {
     reset_highlights(state);
     state->sorted_until = 0;
     strcpy(state->status, "Selection Sort concluído!");
+    add_log_entry(state, "=== SELECTION SORT CONCLUÍDO ===");
     draw_array(state, start_y);
     return 0;
 }
 
-// Insertion Sort
 int insertion_sort(SortState *state, int start_y) {
     show_detailed_algorithm_info(
         "INSERTION SORT",
@@ -483,8 +606,10 @@ int insertion_sort(SortState *state, int start_y) {
     );
     
     strcpy(state->status, "Iniciando Insertion Sort...");
+    add_log_entry(state, "=== INÍCIO DO INSERTION SORT ===");
     state->comparisons = 0;
     state->swaps = 0;
+    init_sorted_positions(state);
     draw_array(state, start_y);
     if (wait_with_controls(state, start_y) == -1) return -1;
     
@@ -494,7 +619,7 @@ int insertion_sort(SortState *state, int start_y) {
         
         reset_highlights(state);
         state->comparing[0] = i;
-        sprintf(state->status, "Inserindo elemento %d (posição %d) na posição correta", key, i);
+        set_status(state, "Inserindo elemento %d (posição %d) na posição correta", key, i);
         draw_array(state, start_y);
         if (wait_with_controls(state, start_y) == -1) return -1;
         
@@ -504,7 +629,7 @@ int insertion_sort(SortState *state, int start_y) {
             state->comparing[1] = j + 1;
             state->comparisons++;
             
-            sprintf(state->status, "Comparando %d com %d - Movendo %d para a direita", 
+            set_status(state, "Comparando %d com %d - Movendo %d para a direita", 
                     state->arr[j], key, state->arr[j]);
             draw_array(state, start_y);
             if (wait_with_controls(state, start_y) == -1) return -1;
@@ -525,7 +650,7 @@ int insertion_sort(SortState *state, int start_y) {
         reset_highlights(state);
         state->sorted_until = i + 1;
         
-        sprintf(state->status, "Elemento %d inserido na posição %d", key, j + 1);
+        set_status(state, "Elemento %d inserido na posição %d", key, j + 1);
         draw_array(state, start_y);
         if (wait_with_controls(state, start_y) == -1) return -1;
     }
@@ -533,28 +658,28 @@ int insertion_sort(SortState *state, int start_y) {
     reset_highlights(state);
     state->sorted_until = 0;
     strcpy(state->status, "Insertion Sort concluído!");
+    add_log_entry(state, "=== INSERTION SORT CONCLUÍDO ===");
     draw_array(state, start_y);
     return 0;
 }
 
-// Partição do QuickSort
 int partition(SortState *state, int low, int high, int start_y) {
     int pivot = state->arr[high];
     int i = low - 1;
     
     reset_highlights(state);
-    state->comparing[0] = high; // Pivot
-    sprintf(state->status, "Pivot escolhido: %d (posição %d)", pivot, high);
+    state->comparing[0] = high; 
+    set_status(state, "Pivot escolhido: %d (posição %d)", pivot, high);
     draw_array(state, start_y);
     if (wait_with_controls(state, start_y) == -1) return -1;
     
     for (int j = low; j < high; j++) {
         reset_highlights(state);
-        state->comparing[0] = high; // Pivot
+        state->comparing[0] = high;
         state->comparing[1] = j;
         state->comparisons++;
         
-        sprintf(state->status, "Comparando %d com pivot %d", state->arr[j], pivot);
+        set_status(state, "Comparando %d com pivot %d", state->arr[j], pivot);
         draw_array(state, start_y);
         if (wait_with_controls(state, start_y) == -1) return -1;
         
@@ -570,7 +695,7 @@ int partition(SortState *state, int low, int high, int start_y) {
                 state->arr[j] = temp;
                 state->swaps++;
                 
-                sprintf(state->status, "Trocando %d (pos %d) com %d (pos %d)", 
+                set_status(state, "Trocando %d (pos %d) com %d (pos %d)", 
                         state->arr[j], i, state->arr[i], j);
                 draw_array(state, start_y);
                 if (wait_with_controls(state, start_y) == -1) return -1;
@@ -587,7 +712,7 @@ int partition(SortState *state, int low, int high, int start_y) {
     state->arr[high] = temp;
     state->swaps++;
     
-    sprintf(state->status, "Colocando pivot %d na posição correta: %d", pivot, i + 1);
+    set_status(state, "Colocando pivot %d na posição correta: %d", pivot, i + 1);
     draw_array(state, start_y);
     if (wait_with_controls(state, start_y) == -1) return -1;
     
@@ -595,17 +720,16 @@ int partition(SortState *state, int low, int high, int start_y) {
     return i + 1;
 }
 
-// QuickSort recursivo
 int quicksort_recursive(SortState *state, int low, int high, int start_y) {
     if (low < high) {
-        sprintf(state->status, "Particionando subarray de índice %d a %d", low, high);
+        set_status(state, "Particionando subarray de índice %d a %d", low, high);
         draw_array(state, start_y);
         if (wait_with_controls(state, start_y) == -1) return -1;
         
         int pi = partition(state, low, high, start_y);
-        if (pi == -1) return -1; // ESC pressionado
+        if (pi == -1) return -1; 
         
-        sprintf(state->status, "Partição completa. Pivot na posição %d", pi);
+        set_status(state, "Partição completa. Pivot na posição %d", pi);
         draw_array(state, start_y);
         if (wait_with_controls(state, start_y) == -1) return -1;
         
@@ -615,7 +739,6 @@ int quicksort_recursive(SortState *state, int low, int high, int start_y) {
     return 0;
 }
 
-// QuickSort wrapper
 int quicksort(SortState *state, int start_y) {
     show_detailed_algorithm_info(
         "QUICK SORT",
@@ -629,19 +752,21 @@ int quicksort(SortState *state, int start_y) {
     );
     
     strcpy(state->status, "Iniciando QuickSort...");
+    add_log_entry(state, "=== INÍCIO DO QUICKSORT ===");
     state->comparisons = 0;
     state->swaps = 0;
+    init_sorted_positions(state);
     draw_array(state, start_y);
     if (wait_with_controls(state, start_y) == -1) return -1;
     
     if (quicksort_recursive(state, 0, state->size - 1, start_y) == -1) return -1;
     
     strcpy(state->status, "QuickSort concluído!");
+    add_log_entry(state, "=== QUICKSORT CONCLUÍDO ===");
     draw_array(state, start_y);
     return 0;
 }
 
-// Menu de configuração de velocidade
 void speed_menu(SortState *state) {
     clear();
     attron(COLOR_PAIR(6));
@@ -664,10 +789,11 @@ void speed_menu(SortState *state) {
     mvprintw(13, 5, " < ou , : Diminuir velocidade");
     mvprintw(14, 5, " > ou . : Aumentar velocidade");
     mvprintw(15, 5, " SPACE  : Pausar/Continuar");
-    mvprintw(16, 5, " ESC    : Voltar ao menu");
+    mvprintw(16, 5, " L      : Habilitar/Desabilitar Log");
+    mvprintw(17, 5, " ESC    : Voltar ao menu");
     
     attron(COLOR_PAIR(2));
-    mvprintw(18, 5, "Pressione 1-5 para escolher ou ESC para voltar...");
+    mvprintw(19, 5, "Pressione 1-5 para escolher ou ESC para voltar...");
     attroff(COLOR_PAIR(2));
     
     refresh();
@@ -678,7 +804,6 @@ void speed_menu(SortState *state) {
     }
 }
 
-// Menu de seleção de algoritmo para estudo
 int algorithm_study_menu() {
     clear();
     attron(COLOR_PAIR(6));
@@ -702,7 +827,6 @@ int algorithm_study_menu() {
     return getch() - '0';
 }
 
-// Mostra comparação detalhada entre algoritmos
 void show_algorithms_comparison() {
     clear();
     
@@ -712,7 +836,6 @@ void show_algorithms_comparison() {
     
     int y = 2;
     
-    // Tabela de complexidades com UTF-8
     attron(COLOR_PAIR(3) | A_BOLD);
     mvprintw(y++, 2, "COMPLEXIDADE DE TEMPO:");
     attroff(COLOR_PAIR(3) | A_BOLD);
@@ -726,7 +849,6 @@ void show_algorithms_comparison() {
     mvprintw(y++, 2, "└────────────────┴───────────┴───────────┴──────────┘");
     y++;
     
-    // Características
     attron(COLOR_PAIR(5) | A_BOLD);
     mvprintw(y++, 2, "CARACTERÍSTICAS PRINCIPAIS:");
     attroff(COLOR_PAIR(5) | A_BOLD);
@@ -755,7 +877,6 @@ void show_algorithms_comparison() {
     mvprintw(y++, 2, "  → Mais rápido na prática  → In-place  → Pode ser O(n²) no pior caso");
     y++;
     
-    // Recomendações
     attron(COLOR_PAIR(7) | A_BOLD);
     mvprintw(y++, 2, "QUANDO USAR CADA UM:");
     attroff(COLOR_PAIR(7) | A_BOLD);
@@ -773,7 +894,104 @@ void show_algorithms_comparison() {
     getch();
 }
 
-// Menu principal
+void show_current_array(SortState *state) {
+    clear();
+    
+    attron(COLOR_PAIR(6) | A_BOLD);
+    mvprintw(2, 10, "=== ARRAY ATUAL ===");
+    attroff(COLOR_PAIR(6) | A_BOLD);
+    
+    mvprintw(4, 5, "Tamanho do array: %d elementos", state->size);
+    
+    mvprintw(6, 5, "Valores:");
+    int line = 7;
+    int col = 5;
+    
+    for (int i = 0; i < state->size; i++) {
+        if (col > 70) {
+            line++;
+            col = 5;
+        }
+        
+        attron(COLOR_PAIR(3));
+        mvprintw(line, col, "[%d]", i);
+        attroff(COLOR_PAIR(3));
+        col += 4;
+        
+        mvprintw(line, col, "%d", state->arr[i]);
+        col += snprintf(NULL, 0, "%d", state->arr[i]) + 2; 
+    }
+    
+    mvprintw(line + 2, 5, "Visualização gráfica:");
+    
+    int max_val = 0;
+    for (int i = 0; i < state->size; i++) {
+        if (state->arr[i] > max_val) max_val = state->arr[i];
+    }
+    
+    for (int i = 0; i < state->size; i++) {
+        int height = (state->arr[i] * 8) / max_val; 
+        if (height == 0) height = 1;
+        
+        int x_pos = 5 + (i * 4);
+        
+        attron(COLOR_PAIR(1));
+        for (int j = 0; j < height; j++) {
+            mvprintw(line + 12 - j, x_pos, "██");
+        }
+        attroff(COLOR_PAIR(1));
+        
+        mvprintw(line + 13, x_pos, "%2d", state->arr[i]);
+        
+        attron(A_DIM);
+        mvprintw(line + 14, x_pos, "%2d", i);
+        attroff(A_DIM);
+    }
+    
+    mvprintw(line + 16, 5, "Estatísticas:");
+    
+    int min_val = state->arr[0];
+    int max_val_stats = state->arr[0];
+    int sum = 0;
+    
+    for (int i = 0; i < state->size; i++) {
+        if (state->arr[i] < min_val) min_val = state->arr[i];
+        if (state->arr[i] > max_val_stats) max_val_stats = state->arr[i];
+        sum += state->arr[i];
+    }
+    
+    double average = (double)sum / state->size;
+    
+    mvprintw(line + 17, 5, "Menor valor: %d", min_val);
+    mvprintw(line + 18, 5, "Maior valor: %d", max_val_stats);
+    mvprintw(line + 19, 5, "Soma total: %d", sum);
+    mvprintw(line + 20, 5, "Média: %.2f", average);
+    
+    int is_sorted = 1;
+    for (int i = 0; i < state->size - 1; i++) {
+        if (state->arr[i] > state->arr[i + 1]) {
+            is_sorted = 0;
+            break;
+        }
+    }
+    
+    if (is_sorted) {
+        attron(COLOR_PAIR(5) | A_BOLD);
+        mvprintw(line + 22, 5, "✓ Este array já está ORDENADO!");
+        attroff(COLOR_PAIR(5) | A_BOLD);
+    } else {
+        attron(COLOR_PAIR(2));
+        mvprintw(line + 22, 5, "✗ Este array NÃO está ordenado");
+        attroff(COLOR_PAIR(2));
+    }
+    
+    attron(COLOR_PAIR(6));
+    mvprintw(line + 24, 5, "Pressione qualquer tecla para voltar ao menu...");
+    attroff(COLOR_PAIR(6));
+    
+    refresh();
+    getch();
+}
 int show_menu(SortState *state) {
     clear();
     attron(COLOR_PAIR(6) | A_BOLD);
@@ -789,12 +1007,15 @@ int show_menu(SortState *state) {
     mvprintw(11, 5, "4. Quick Sort");
     mvprintw(12, 5, "5. Gerar novo array aleatório");
     mvprintw(13, 5, "6. Inserir array manualmente");
-    mvprintw(14, 5, "7. Configurar velocidade");
-    mvprintw(15, 5, "8. Guia de estudo dos algoritmos");
-    mvprintw(16, 5, "0. Sair");
+    mvprintw(14, 5, "7. Checar array atual");
+    mvprintw(15, 5, "8. Configurar velocidade");
+    mvprintw(16, 5, "9. Guia de estudo dos algoritmos");
+    mvprintw(17, 5, "0. Ver log de execução");
+    mvprintw(18, 5, "Pressione ESC para sair");
+    
     
     attron(COLOR_PAIR(3));
-    mvprintw(18, 5, "Legenda: ");
+    mvprintw(20, 5, "Legenda: ");
     
     attron(COLOR_PAIR(2));
     printw("[█] Comparando  ");
@@ -808,14 +1029,27 @@ int show_menu(SortState *state) {
     printw("[█] Ordenado");
     attroff(COLOR_PAIR(5));
     
-    mvprintw(20, 5, "Velocidade atual: %s", speed_names[state->speed]);
-    mvprintw(21, 5, "Opção: ");
+    mvprintw(22, 5, "Velocidade atual: %s | Log: %s", 
+    speed_names[state->speed], state->log_enabled ? "Habilitado" : "Desabilitado");
+    mvprintw(23, 5, "Opção: ");
     refresh();
     
-    return getch() - '0';
+
+    refresh();
+    
+    int key = getch();
+    
+    if (key == 27) { 
+        return -1; 
+    }
+    
+    if (key >= '0' && key <= '9') {
+        return key - '0';
+    }
+    
+    return -2; 
 }
 
-// Gera array aleatório
 void generate_random_array(SortState *state) {
     clear();
     mvprintw(5, 5, "Digite o tamanho do array (1-%d): ", MAX_SIZE);
@@ -843,7 +1077,6 @@ void generate_random_array(SortState *state) {
     getch();
 }
 
-// Entrada manual do array
 void input_manual_array(SortState *state) {
     clear();
     mvprintw(5, 5, "Digite o tamanho do array (1-%d): ", MAX_SIZE);
@@ -870,16 +1103,13 @@ void input_manual_array(SortState *state) {
 }
 
 int main() {
-    // MUDANÇA PRINCIPAL: setlocale correto para UTF-8
     setlocale(LC_ALL, "");
     
-    // Inicializa ncurses
     initscr();
     cbreak();
     noecho();
     keypad(stdscr, TRUE);
     
-    // Verifica suporte a cores
     if (has_colors() == FALSE) {
         endwin();
         printf("Seu terminal não suporta cores\n");
@@ -888,14 +1118,13 @@ int main() {
     
     init_colors();
     
-    // Inicializa estado
     SortState state;
     state.size = 10;
     state.speed = SPEED_NORMAL;
     reset_highlights(&state);
-    state.sorted_until = 0;
+    init_sorted_positions(&state);
+    init_log(&state);
     
-    // Gera array inicial
     srand(time(NULL));
     for (int i = 0; i < state.size; i++) {
         state.arr[i] = rand() % 100 + 1;
@@ -905,25 +1134,36 @@ int main() {
     int original_arr[MAX_SIZE];
     
     while (1) {
+        for (int i = 0; i < state.size; i++) {
+            original_arr[i] = state.arr[i];
+        }
+        
         choice = show_menu(&state);
         
-        if (choice == 0) break;
+        if (choice == -1) { 
+            break;
+        }
+        
+        if (choice == 0) {
+            show_log(&state);
+            continue;
+        }
         
         if (choice == 7) {
-            speed_menu(&state);
+            show_current_array(&state);
             continue;
         }
         
         if (choice == 8) {
+            speed_menu(&state);
+            continue;
+        }
+        
+        if (choice == 9) {
             int study_choice = algorithm_study_menu();
             if (study_choice == 5) {
                 show_algorithms_comparison();
             } else if (study_choice >= 1 && study_choice <= 4) {
-                // Salva array original
-                for (int i = 0; i < state.size; i++) {
-                    original_arr[i] = state.arr[i];
-                }
-                
                 clear();
                 int result = 0;
                 
@@ -934,27 +1174,32 @@ int main() {
                     case 4: result = quicksort(&state, 3); break;
                 }
                 
+                for (int i = 0; i < state.size; i++) {
+                    state.arr[i] = original_arr[i];
+                }
+                init_sorted_positions(&state);
+                reset_highlights(&state);
+                
                 if (result != -1) {
                     mvprintw(20, 5, "Pressione 'r' para repetir ou qualquer tecla para voltar ao menu");
                     refresh();
                     
                     int key = getch();
                     if (key == 'r' || key == 'R') {
-                        // Restaura array original
-                        for (int i = 0; i < state.size; i++) {
-                            state.arr[i] = original_arr[i];
-                        }
-                        state.sorted_until = 0;
-                        reset_highlights(&state);
                         clear();
                         
-                        // Repete o mesmo algoritmo
                         switch (study_choice) {
                             case 1: bubble_sort(&state, 3); break;
                             case 2: selection_sort(&state, 3); break;
                             case 3: insertion_sort(&state, 3); break;
                             case 4: quicksort(&state, 3); break;
                         }
+                        
+                        for (int i = 0; i < state.size; i++) {
+                            state.arr[i] = original_arr[i];
+                        }
+                        init_sorted_positions(&state);
+                        reset_highlights(&state);
                         
                         mvprintw(20, 5, "Pressione qualquer tecla para voltar ao menu...");
                         refresh();
@@ -963,11 +1208,6 @@ int main() {
                 }
             }
             continue;
-        }
-        
-        // Salva array original para poder repetir
-        for (int i = 0; i < state.size; i++) {
-            original_arr[i] = state.arr[i];
         }
         
         clear();
@@ -996,27 +1236,32 @@ int main() {
                 continue;
         }
         
+        for (int i = 0; i < state.size; i++) {
+            state.arr[i] = original_arr[i];
+        }
+        init_sorted_positions(&state);
+        reset_highlights(&state);
+        
         if (result != -1) {
             mvprintw(20, 5, "Pressione 'r' para repetir com o mesmo array ou qualquer tecla para voltar ao menu");
             refresh();
             
             int key = getch();
             if (key == 'r' || key == 'R') {
-                // Restaura array original
-                for (int i = 0; i < state.size; i++) {
-                    state.arr[i] = original_arr[i];
-                }
-                state.sorted_until = 0;
-                reset_highlights(&state);
                 clear();
                 
-                // Repete o mesmo algoritmo
                 switch (choice) {
                     case 1: bubble_sort(&state, 3); break;
                     case 2: selection_sort(&state, 3); break;
                     case 3: insertion_sort(&state, 3); break;
                     case 4: quicksort(&state, 3); break;
                 }
+                
+                for (int i = 0; i < state.size; i++) {
+                    state.arr[i] = original_arr[i];
+                }
+                init_sorted_positions(&state);
+                reset_highlights(&state);
                 
                 mvprintw(20, 5, "Pressione qualquer tecla para voltar ao menu...");
                 refresh();
