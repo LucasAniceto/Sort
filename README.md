@@ -186,23 +186,8 @@ sudo apt-get install libncurses5-dev libncursesw5-dev
 gcc *.c -o sort -lncursesw
 ```
 
-### Terminal muito pequeno
-- Redimensione o terminal para pelo menos 80x24 caracteres
-- Use um terminal em tela cheia para melhor experiência
 
-### Cores não funcionam
-- Verifique se seu terminal suporta cores
-- Teste com: `echo $TERM`
-- Experimente terminais como: xterm-256color, gnome-terminal
 
-## 📖 Exemplo de Uso Educacional
-
-1. **Inicie com Bubble Sort** para entender conceitos básicos
-2. **Compare com Selection Sort** para ver diferentes abordagens
-3. **Experimente Insertion Sort** com dados quase ordenados
-4. **Finalize com Quick Sort** para algoritmos avançados
-5. **Use o guia de estudo** para aprofundar conhecimentos
-6. **Analise o log** para entender o número de operações
 
 ## 🤝 Contribuindo
 
